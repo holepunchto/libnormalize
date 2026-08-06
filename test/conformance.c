@@ -25,6 +25,24 @@ typedef struct {
 static size_t tested = 0;
 static size_t failed = 0;
 
+// A portable replacement for `strsep`, which MSVC does not provide. Returns the
+// next field of `*rest` up to the first delimiter, advancing `*rest` past it.
+static char *
+next_field(char **rest, char delimiter) {
+  char *start = *rest;
+  if (start == NULL) return NULL;
+
+  char *end = strchr(start, delimiter);
+  if (end != NULL) {
+    *end = '\0';
+    *rest = end + 1;
+  } else {
+    *rest = NULL;
+  }
+
+  return start;
+}
+
 // Parses a space separated column of hex code points.
 static bool
 parse(const char *field, sequence_t *sequence) {
@@ -122,7 +140,7 @@ main(int argc, char *argv[]) {
 
     char *rest = line;
 
-    for (char *field = strsep(&rest, ";"); field != NULL && count < 5; field = strsep(&rest, ";")) {
+    for (char *field = next_field(&rest, ';'); field != NULL && count < 5; field = next_field(&rest, ';')) {
       if (!parse(field, &columns[count])) break;
 
       count++;
