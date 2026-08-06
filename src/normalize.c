@@ -1,4 +1,5 @@
 #include <normalize/tables.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -52,6 +53,23 @@ normalize_combining_class(utf32_t c) {
   return normalize__range_value(
     normalize__combining_class_ranges,
     normalize__combining_class_blocks,
+    c
+  );
+}
+
+/**
+ * The NFC_Quick_Check value of a code point, which is `Yes` for everything below
+ * the first mark without a lookup, the same shortcut the combining class takes.
+ *
+ * https://www.unicode.org/reports/tr44/#NFC_QC
+ */
+static inline uint8_t
+normalize__quick_check(utf32_t c) {
+  if (c < NORMALIZE_FIRST_MARK) return NORMALIZE_QC_YES;
+
+  return normalize__range_value(
+    normalize__quick_check_ranges,
+    normalize__quick_check_blocks,
     c
   );
 }
@@ -118,6 +136,36 @@ normalize_decompose(utf32_t c, utf32_t *result) {
   return 1;
 }
 
+/**
+ * Searches the composition table for the primary composite of a pair, the two
+ * having already been found to be neither a Hangul pair nor ruled out by the quick
+ * check. This is kept out of `normalize_compose()` so that the cheap tests ahead of
+ * it stay small enough to inline into the recompose loop, the search itself being
+ * reached on only the code points that can actually compose.
+ */
+static utf32_t
+normalize__compose_table(utf32_t first, utf32_t second) {
+  size_t lo = 0, hi = NORMALIZE_COMPOSITIONS;
+
+  while (lo < hi) {
+    size_t mid = lo + (hi - lo) / 2;
+
+    const normalize__composition_t *entry = &normalize__compositions[mid];
+
+    if (entry->first != first) {
+      if (entry->first < first) lo = mid + 1;
+      else hi = mid;
+    } else if (entry->second != second) {
+      if (entry->second < second) lo = mid + 1;
+      else hi = mid;
+    } else {
+      return entry->composite;
+    }
+  }
+
+  return 0;
+}
+
 utf32_t
 normalize_compose(utf32_t first, utf32_t second) {
   // The second of the two code points of a composition is always a combining mark,
@@ -145,25 +193,16 @@ normalize_compose(utf32_t first, utf32_t second) {
     return first + (second - normalize__hangul_t_base);
   }
 
-  size_t lo = 0, hi = NORMALIZE_COMPOSITIONS;
+  // Only a code point that takes part in a composition as the second of its two can
+  // be found in the table, so any other need not be looked for. This is the common
+  // case for text that does not compose, such as CJK, which would otherwise pay for a
+  // full search of the table that only ever returns zero. The bitset is flat and so
+  // answers in a single load, small enough to keep this test on the inlined path.
+  if (second > NORMALIZE_MAX_COMPOSITION_SECOND) return 0;
 
-  while (lo < hi) {
-    size_t mid = lo + (hi - lo) / 2;
+  if (!(normalize__composition_second[second >> 3] & (1u << (second & 7)))) return 0;
 
-    const normalize__composition_t *entry = &normalize__compositions[mid];
-
-    if (entry->first != first) {
-      if (entry->first < first) lo = mid + 1;
-      else hi = mid;
-    } else if (entry->second != second) {
-      if (entry->second < second) lo = mid + 1;
-      else hi = mid;
-    } else {
-      return entry->composite;
-    }
-  }
-
-  return 0;
+  return normalize__compose_table(first, second);
 }
 
 /**
@@ -210,9 +249,17 @@ normalize_recompose(utf32_t *data, size_t len) {
 
     uint8_t combining_class = normalize_combining_class(c);
 
-    utf32_t composite = normalize_compose(data[starter], c);
+    // A code point that a mark of the same or a higher class stands between and its
+    // starter is blocked from composing with it, so the composition need not even be
+    // looked for. Testing the cheap combining class first keeps the table search off
+    // the path for every blocked mark.
+    utf32_t composite = 0;
 
-    if (composite != 0 && (last == 0 || last < combining_class)) {
+    if (last == 0 || last < combining_class) {
+      composite = normalize_compose(data[starter], c);
+    }
+
+    if (composite != 0) {
       data[starter] = composite;
     } else {
       if (combining_class == 0) starter = out;
@@ -239,8 +286,59 @@ normalize_nfd(const utf32_t *data, size_t len, utf32_t *result) {
   return out;
 }
 
+/**
+ * Whether `data` is already in Normalization Form C, by the quick check that UAX #15
+ * gives. A code point that is NFC_QC=No or that follows a mark of a higher combining
+ * class rules the string out; one that is NFC_QC=Maybe is not enough to decide and
+ * so is treated as ruling it out too, this being a check that only ever answers for
+ * certain. A string it passes needs no work, so can be copied straight to the output.
+ *
+ * https://www.unicode.org/reports/tr15/#Detecting_Normalization_Forms
+ */
+static bool
+normalize__is_nfc(const utf32_t *data, size_t len) {
+  uint8_t last = 0;
+
+  for (size_t i = 0; i < len; i++) {
+    utf32_t c = data[i];
+
+    // Everything below the first mark is a starter that is left alone, which is the
+    // whole of an ASCII string and most of a typical one.
+    if (c < NORMALIZE_FIRST_MARK) {
+      last = 0;
+
+      continue;
+    }
+
+    // NFC_QC=No never stands in a normalized string, and NFC_QC=Maybe might compose
+    // with the code point before it; neither can be passed by the quick check. This
+    // is tested ahead of the combining class so that a code point that rules the
+    // string out, such as a decomposed mark, does so without the second lookup.
+    if (normalize__quick_check(c) != NORMALIZE_QC_YES) return false;
+
+    uint8_t combining_class = normalize_combining_class(c);
+
+    // A mark out of canonical order might reorder and then compose, so the string
+    // cannot be taken for normalized without doing the work.
+    if (last > combining_class && combining_class != 0) return false;
+
+    last = combining_class;
+  }
+
+  return true;
+}
+
 size_t
 normalize_nfc(const utf32_t *data, size_t len, utf32_t *result) {
+  // An input that is already in the form is by far the common case for the callers
+  // that normalize to check or to canonicalize, such as the IDNA path, and needs no
+  // more than to be copied out.
+  if (normalize__is_nfc(data, len)) {
+    memcpy(result, data, len * sizeof(utf32_t));
+
+    return len;
+  }
+
   size_t out = 0;
 
   for (size_t i = 0; i < len; i++) {
