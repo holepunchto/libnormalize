@@ -2,8 +2,13 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <time.h>
 #include <utf.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <time.h>
+#endif
 
 // The number of times each case is normalized in one timed run.
 #define ITERATIONS 1000000
@@ -24,23 +29,33 @@ typedef struct {
 static volatile size_t sink;
 
 static double
+now_ns(void) {
+#ifdef _WIN32
+  LARGE_INTEGER frequency, counter;
+  QueryPerformanceFrequency(&frequency);
+  QueryPerformanceCounter(&counter);
+  return (double) counter.QuadPart * 1e9 / (double) frequency.QuadPart;
+#else
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (double) ts.tv_sec * 1e9 + (double) ts.tv_nsec;
+#endif
+}
+
+static double
 run_case(const bench_case_t *bench) {
   utf32_t result[64];
 
   double best = 1e30;
 
   for (size_t run = 0; run < RUNS; run++) {
-    struct timespec start, end;
-
-    clock_gettime(CLOCK_MONOTONIC, &start);
+    double start = now_ns();
 
     for (size_t i = 0; i < ITERATIONS; i++) {
       sink = normalize_nfc(bench->input, bench->len, result);
     }
 
-    clock_gettime(CLOCK_MONOTONIC, &end);
-
-    double ns = (end.tv_sec - start.tv_sec) * 1e9 + (end.tv_nsec - start.tv_nsec);
+    double ns = now_ns() - start;
     double per = ns / ITERATIONS;
 
     if (per < best) best = per;
