@@ -14,6 +14,7 @@ ucd_fetch(
   UCD
     UnicodeData.txt
     CompositionExclusions.txt
+    DerivedNormalizationProps.txt
   PATHS normalize_sources
 )
 

@@ -2,6 +2,8 @@ list(APPEND tests
   max-length
   normalize-forms
   normalize-primitives
+  normalize-quick-check
+  normalize-starter-composition
 )
 
 foreach(test IN LISTS tests)
