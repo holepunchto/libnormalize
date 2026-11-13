@@ -86,7 +86,13 @@ install(FILES include/normalize.h DESTINATION include)
 install(FILES "${normalize_tables_header}" DESTINATION include/normalize)
 
 if(PROJECT_IS_TOP_LEVEL)
+  set(BENCH OFF CACHE BOOL "Build the benchmarks")
+
   enable_testing()
-  add_subdirectory(bench)
+
+  if(BENCH)
+    add_subdirectory(bench)
+  endif()
+
   add_subdirectory(test)
 endif()
