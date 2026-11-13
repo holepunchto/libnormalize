@@ -10,6 +10,8 @@ fetch_package("github:holepunchto/libutf")
 
 include(cmake/tables.cmake)
 
+get_property(shared GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS)
+
 add_library(normalize OBJECT)
 
 add_dependencies(normalize normalize_tables)
@@ -18,7 +20,7 @@ set_target_properties(
   normalize
   PROPERTIES
   C_STANDARD 11
-  POSITION_INDEPENDENT_CODE ON
+  POSITION_INDEPENDENT_CODE ${shared}
 )
 
 target_sources(
@@ -39,21 +41,23 @@ target_include_directories(
     $<TARGET_PROPERTY:utf,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
-add_library(normalize_shared SHARED)
+if(shared)
+  add_library(normalize_shared SHARED)
 
-set_target_properties(
-  normalize_shared
-  PROPERTIES
-  OUTPUT_NAME normalize
-  WINDOWS_EXPORT_ALL_SYMBOLS ON
-)
+  set_target_properties(
+    normalize_shared
+    PROPERTIES
+    OUTPUT_NAME normalize
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
+  )
 
-target_link_libraries(
-  normalize_shared
-  PUBLIC
-    normalize
-    utf_shared
-)
+  target_link_libraries(
+    normalize_shared
+    PUBLIC
+      normalize
+      utf_shared
+  )
+endif()
 
 add_library(normalize_static STATIC)
 
@@ -71,7 +75,11 @@ target_link_libraries(
     utf_static
 )
 
-install(TARGETS normalize_shared normalize_static)
+install(TARGETS normalize_static)
+
+if(shared)
+  install(TARGETS normalize_shared)
+endif()
 
 install(FILES include/normalize.h DESTINATION include)
 
