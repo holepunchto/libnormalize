@@ -1,50 +1,27 @@
-list(APPEND tests
-  max-length
-  normalize-forms
-  normalize-primitives
-  normalize-quick-check
-  normalize-starter-composition
+if(TARGET normalize_shared)
+  set(library normalize::shared)
+else()
+  set(library normalize::static)
+endif()
+
+add_test_executables(
+  max-length.c
+  normalize-forms.c
+  normalize-primitives.c
+  normalize-quick-check.c
+  normalize-starter-composition.c
+  LINK
+    ${library}
+  TIMEOUT 60
 )
 
-foreach(test IN LISTS tests)
-  add_executable(${test} ${test}.c)
-
-  target_link_libraries(
-    ${test}
-    PRIVATE
-      normalize_static
-  )
-
-  add_test(
-    NAME ${test}
-    COMMAND ${test}
-    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-  )
-
-  set_tests_properties(
-    ${test}
-    PROPERTIES
-    TIMEOUT 60
-  )
-endforeach()
-
-add_executable(conformance conformance.c)
-
-target_link_libraries(
+add_test_executable(
   conformance
-  PRIVATE
-    normalize_static
-)
-
-add_test(
-  NAME conformance
-  COMMAND conformance "${ucd_data}/NormalizationTest.txt"
-  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-)
-
-set_tests_properties(
-  conformance
-  PROPERTIES
+  conformance.c
+  LINK
+    ${library}
+  ARGS
+    "${ucd_data}/NormalizationTest.txt"
   TIMEOUT 120
 )
 

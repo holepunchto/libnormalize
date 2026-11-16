@@ -1,19 +1,8 @@
-list(APPEND fuzzers
-  normalize
+add_fuzz_executables(
+  normalize.c
+  PREFIX fuzz_
+  DURATION 600
+  LINK
+    normalize::static
+    utf::static
 )
-
-foreach(fuzzer IN LISTS fuzzers)
-  string(REPLACE "/" "_" name ${fuzzer})
-
-  add_fuzzer(
-    fuzz_${name}
-    ${fuzzer}.c
-    DURATION 600
-  )
-
-  target_link_libraries(
-    fuzz_${name}
-    PRIVATE
-      normalize_static
-  )
-endforeach()

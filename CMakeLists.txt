@@ -2,97 +2,41 @@ cmake_minimum_required(VERSION 4.0)
 
 find_package(cmake-fetch REQUIRED PATHS node_modules/cmake-fetch)
 find_package(cmake-fuzz REQUIRED PATHS node_modules/cmake-fuzz)
+find_package(cmake-prelude REQUIRED PATHS node_modules/cmake-prelude)
+find_package(cmake-test REQUIRED PATHS node_modules/cmake-test)
 find_package(cmake-ucd REQUIRED PATHS node_modules/cmake-ucd)
 
-project(normalize C)
+project(normalize LANGUAGES C VERSION 0.0.0)
 
 fetch_package("github:holepunchto/libutf")
 
 include(cmake/tables.cmake)
 
-get_property(shared GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS)
-
-add_library(normalize OBJECT)
-
-add_dependencies(normalize normalize_tables)
-
-set_target_properties(
+add_library_targets(
   normalize
-  PROPERTIES
-  C_STANDARD 11
-  POSITION_INDEPENDENT_CODE ${shared}
-)
-
-target_sources(
-  normalize
-  INTERFACE
+  HEADERS
     include/normalize.h
     "${normalize_tables_header}"
-  PRIVATE
-    src/normalize.c
-    "${normalize_tables_source}"
-)
-
-target_include_directories(
-  normalize
-  PUBLIC
+  BASE_DIRS
     include
     "${CMAKE_CURRENT_BINARY_DIR}/include"
-    $<TARGET_PROPERTY:utf,INTERFACE_INCLUDE_DIRECTORIES>
+  FEATURES
+    c_std_11
+  SOURCES
+    src/normalize.c
+    "${normalize_tables_source}"
+  LINK
+    utf::headers
 )
 
-if(shared)
-  add_library(normalize_shared SHARED)
+add_dependencies(normalize_headers normalize_tables)
 
-  set_target_properties(
-    normalize_shared
-    PROPERTIES
-    OUTPUT_NAME normalize
-    WINDOWS_EXPORT_ALL_SYMBOLS ON
-  )
-
-  target_link_libraries(
-    normalize_shared
-    PUBLIC
-      normalize
-      utf_shared
-  )
-endif()
-
-add_library(normalize_static STATIC)
-
-set_target_properties(
-  normalize_static
-  PROPERTIES
-  OUTPUT_NAME normalize
-  PREFIX lib
-)
-
-target_link_libraries(
-  normalize_static
-  PUBLIC
-    normalize
-    utf_static
-)
-
-install(TARGETS normalize_static)
-
-if(shared)
-  install(TARGETS normalize_shared)
-endif()
-
-install(FILES include/normalize.h DESTINATION include)
-
-install(FILES "${normalize_tables_header}" DESTINATION include/normalize)
+add_test_subdirectory(test)
 
 if(PROJECT_IS_TOP_LEVEL)
   set(BENCH OFF CACHE BOOL "Build the benchmarks")
 
-  enable_testing()
-
   if(BENCH)
     add_subdirectory(bench)
   endif()
-
-  add_subdirectory(test)
 endif()

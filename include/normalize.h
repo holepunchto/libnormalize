@@ -10,13 +10,27 @@ extern "C" {
 #include <stdint.h>
 #include <utf.h>
 
+#if defined(_WIN32)
+#if defined(NORMALIZE_BUILDING)
+#define NORMALIZE_EXPORT __declspec(dllexport)
+#elif defined(NORMALIZE_SHARED)
+#define NORMALIZE_EXPORT __declspec(dllimport)
+#else
+#define NORMALIZE_EXPORT
+#endif
+#elif defined(__GNUC__)
+#define NORMALIZE_EXPORT __attribute__((visibility("default")))
+#else
+#define NORMALIZE_EXPORT
+#endif
+
 /**
  * The Canonical_Combining_Class of a code point, which is what canonical ordering
  * sorts a decomposition by. A starter has a class of zero.
  *
  * https://www.unicode.org/reports/tr44/#Canonical_Combining_Class
  */
-uint8_t
+NORMALIZE_EXPORT uint8_t
 normalize_combining_class(utf32_t c);
 
 /**
@@ -27,7 +41,7 @@ normalize_combining_class(utf32_t c);
  *
  * Returns `(size_t) -1` if `len` is large enough that the bound would overflow.
  */
-size_t
+NORMALIZE_EXPORT size_t
 normalize_max_length(size_t len);
 
 /**
@@ -39,7 +53,7 @@ normalize_max_length(size_t len);
  *
  * https://www.unicode.org/reports/tr15/#Canonical_Decomposition
  */
-size_t
+NORMALIZE_EXPORT size_t
 normalize_decompose(utf32_t c, utf32_t *result);
 
 /**
@@ -47,7 +61,7 @@ normalize_decompose(utf32_t c, utf32_t *result);
  *
  * https://www.unicode.org/reports/tr15/#Primary_Composite
  */
-utf32_t
+NORMALIZE_EXPORT utf32_t
 normalize_compose(utf32_t first, utf32_t second);
 
 /**
@@ -60,7 +74,7 @@ normalize_compose(utf32_t first, utf32_t second);
  *
  * https://www.unicode.org/reports/tr15/#Description_Norm
  */
-size_t
+NORMALIZE_EXPORT size_t
 normalize_recompose(utf32_t *data, size_t len);
 
 /**
@@ -71,7 +85,7 @@ normalize_recompose(utf32_t *data, size_t len);
  *
  * https://www.unicode.org/reports/tr15/#Norm_Forms
  */
-size_t
+NORMALIZE_EXPORT size_t
 normalize_nfd(const utf32_t *data, size_t len, utf32_t *result);
 
 /**
@@ -83,7 +97,7 @@ normalize_nfd(const utf32_t *data, size_t len, utf32_t *result);
  *
  * https://www.unicode.org/reports/tr15/#Norm_Forms
  */
-size_t
+NORMALIZE_EXPORT size_t
 normalize_nfc(const utf32_t *data, size_t len, utf32_t *result);
 
 #ifdef __cplusplus
